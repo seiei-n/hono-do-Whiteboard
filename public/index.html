@@ -23,12 +23,9 @@
             const ctx = canvas.getContext("2d");
             const canvasWidth = 500;
             const canvasHeight = 500;
-            var canvasData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-            var pixels = canvasData.data;
             var clickFlag = false;
             var canvasBgColor = "white";
             var canvasPenColor = "black";
-            let counter = 0;
 
             function setCanvasBgColor(color) {
                 canvasBgColor = color;
@@ -42,10 +39,12 @@
             let lastXbuf;
             let lastYbuf;
             function drawFromServer(data) {
-                counter++;
-                console.log(counter);
-                console.log(data);
-                if (data.type === "end") {
+                const canvasData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+                if (
+                    data.type === "end" ||
+                    data.type === "clear" ||
+                    data.type === "image"
+                ) {
                     lastXbuf = null;
                     lastYbuf = null;
                     return;
@@ -62,6 +61,7 @@
                 const sx = lastXbuf < x ? 1 : -1;
                 const sy = lastYbuf < y ? 1 : -1;
                 let err = dx - dy;
+                var pixels = canvasData.data;
 
                 while (true) {
                     const index = (lastXbuf + lastYbuf * canvasWidth) * 4;
@@ -100,8 +100,8 @@
                     return;
                 }
                 ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-                canvasData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-                pixels = canvasData.data;
+                const canvasData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+                var pixels = canvasData.data;
                 ctx.putImageData(canvasData, 0, 0);
                 setCanvasPenColor(canvasPenColor);
                 setCanvasBgColor(canvasBgColor);
@@ -109,7 +109,13 @@
 
             async function getDrawing() {
                 const res = await fetch(
-                    protocol + "//" + hostname + "/board/draw"
+                    protocol + "//" + hostname + "/board/image",
+                    {
+                        method: "GET",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                    }
                 );
                 const data = await res.json();
                 return data;
@@ -117,6 +123,7 @@
 
             window.onload = async () => {
                 const drawing = await getDrawing();
+                base64ToCanvas(drawing);
             };
 
             function join() {
@@ -168,8 +175,7 @@
 
             let lastX, lastY;
             function draw(e) {
-                counter++;
-                console.log(counter);
+                const canvasData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
                 if (!lastX || !lastY) {
                     lastX = e.offsetX;
                     lastY = e.offsetY;
@@ -183,7 +189,7 @@
                 const sx = lastX < x ? 1 : -1;
                 const sy = lastY < y ? 1 : -1;
                 let err = dx - dy;
-
+                var pixels = canvasData.data;
                 while (true) {
                     const index = (lastX + lastY * canvasWidth) * 4;
                     pixels[index + 0] = parseInt(
@@ -224,78 +230,47 @@
                 currentWebSocket.send(canvasjson);
             }
 
-            function draw2(e) {
-                counter++;
-                console.log(counter);
-
-                const x = e.offsetX;
-                const y = e.offsetY;
-
-                if (!lastX || !lastY) {
-                    lastX = x;
-                    lastY = y;
-                    return;
-                }
-
-                const startY = lastY;
-                const startX = lastX;
-
-                const controlPointX1 = startX + (x - startX) / 3;
-                const controlPointY1 = startY;
-                const controlPointX2 = startX + (2 * (x - startX)) / 3;
-                const controlPointY2 = y;
-
-                ctx.beginPath();
-                ctx.moveTo(startX, startY);
-                ctx.bezierCurveTo(
-                    controlPointX1,
-                    controlPointY1,
-                    controlPointX2,
-                    controlPointY2,
-                    x,
-                    y
-                );
-
-                // Set the line color and width
-                ctx.strokeStyle = canvasPenColor;
-                ctx.lineWidth = 2;
-
-                // Draw the curve
-                ctx.stroke();
-
-                // Update lastX and lastY
-                lastX = x;
-                lastY = y;
-
-                const sendData = {
-                    type: "draw",
-                    x: x,
-                    y: y,
-                    color: canvasPenColor,
-                };
-                const canvasjson = JSON.stringify(sendData);
-                currentWebSocket.send(canvasjson);
-            }
-
             function sendEnd(s) {
                 const sendData = {
                     type: "end",
                 };
                 const canvasjson = JSON.stringify(sendData);
                 currentWebSocket.send(canvasjson);
+                canvasToBase64();
+            }
+
+            function canvasToBase64() {
+                const canvas = document.getElementById("canvas");
+                const base64 = canvas.toDataURL();
+                const sendData = {
+                    type: "image",
+                    image: base64,
+                };
+                const canvasjson = JSON.stringify(sendData);
+                fetch(protocol + "//" + hostname + "/board/image", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: canvasjson,
+                });
+            }
+
+            function base64ToCanvas(data) {
+                const canvas = document.getElementById("canvas");
+                const ctx = canvas.getContext("2d");
+                const image = new Image();
+                image.src = data.image;
+                image.onload = function () {
+                    ctx.drawImage(image, 0, 0, canvasWidth, canvasHeight);
+                };
+                clickFlag = false;
+
             }
 
             setCanvasBgColor(canvasBgColor);
             setCanvasPenColor(canvasPenColor);
             canvas.addEventListener("mousedown", function (e) {
-                clickFlag = true;
-                const s = "start";
-                lastX = null;
-                lastY = null;
-                draw(e);
-            });
-            // for smartphone
-            canvas.addEventListener("touchstart", function (e) {
                 clickFlag = true;
                 const s = "start";
                 lastX = null;
@@ -311,15 +286,6 @@
                     // setTimeout(draw1, 100, e);
                 }
             });
-            // for smartphone
-            canvas.addEventListener("touchmove", function (e) {
-                if (clickFlag) {
-                    const s = "move";
-                    // 300msごとにdrawを呼び出す
-                    //draw1(e);
-                    setTimeout(draw, 1000, e);
-                }
-            });
 
             canvas.addEventListener("mouseup", function (e) {
                 clickFlag = false;
@@ -328,24 +294,8 @@
                 lastY = null;
                 sendEnd(s);
             });
-            // for smartphone
-            canvas.addEventListener("touchend", function (e) {
-                clickFlag = false;
-                const s = "end";
-                lastX = null;
-                lastY = null;
-                sendEnd(s);
-            });
 
             canvas.addEventListener("mouseout", function (e) {
-                clickFlag = false;
-                lastX = null;
-                lastY = null;
-                const s = "end";
-                sendEnd(s);
-            });
-            // for smartphone
-            canvas.addEventListener("touchcancel", function (e) {
                 clickFlag = false;
                 lastX = null;
                 lastY = null;

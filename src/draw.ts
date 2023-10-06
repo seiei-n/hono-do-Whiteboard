@@ -1,4 +1,6 @@
+import { Handler } from "hono";
 import { generateHonoObject } from "hono-do";
+import { defineStorage } from "hono-do/storage";
 
 function uuidv4() {
     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
@@ -11,17 +13,25 @@ function uuidv4() {
     );
 }
 
-export const Draw = generateHonoObject("/board", (app) => {
-    const drawData: {
-        type: "draw" | "end" | "clear";
-        x: number;
-        y: number;
-        color: string;
-        user: string;
-    }[] = [];
+export const Draw = generateHonoObject("/board", async (app, { storage }) => {
     const sessions = new Map<string, WebSocket>();
+    const [getImage, setImage, deleteImage] = await defineStorage<
+        string | null
+    >(storage, "image", null);
 
-    app.get("/draw", async (c) => c.json(drawData));
+    app.post("/image", async (c) => {
+        const req = await c.req.json();
+        const image = req.image;
+        if (image) {
+            await setImage(image);
+        }
+        return c.text("OK");
+    });
+
+    app.get("/image", async (c) => {
+        const image = await getImage();
+        return c.json({ image });
+    });
 
     app.get("/websocket", async (c) => {
         if (c.req.header("Upgrade") === "websocket") {
