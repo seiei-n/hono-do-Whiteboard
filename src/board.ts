@@ -13,7 +13,7 @@ function uuidv4() {
     );
 }
 
-export const Draw = generateHonoObject("/board", async (app, { storage }) => {
+export const Board = generateHonoObject("/board", async (app, { storage }) => {
     const sessions = new Map<string, WebSocket>();
     const [getImage, setImage, deleteImage] = await defineStorage<
         string | null

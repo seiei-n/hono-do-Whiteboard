@@ -2,9 +2,9 @@ name = "jamjam"
 compatibility_date = "2023-01-01"
 
 [durable_objects]
-bindings = [{ name = "DRAW", class_name = "Draw" }]
+bindings = [{ name = "BOARD", class_name = "Board" }]
 
 [[migrations]]
 tag = "v1"
-new_classes = ["Draw"]
+new_classes = ["Board"]
 
